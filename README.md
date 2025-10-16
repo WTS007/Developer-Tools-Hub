@@ -1,8 +1,8 @@
-Client-Side Developer Tools
+*Client-Side Developer Tools*
 
 This is a collection of simple, powerful, and privacy-focused developer tools that run entirely in your browser. No data is ever sent to a server. Everything happens right on your machine.
 
-Tools Included
+*Tools Included*
 
 JPEG Compressor: Reduce the file size of JPEG images by adjusting the quality.
 
