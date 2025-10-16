@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Image Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loader {
+            border: 4px solid #4A5568; /* dark:border-gray-600 */
+            border-top: 4px solid #3b82f6; /* blue-500 */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            background: #374151; /* dark-gray-700 */
+        }
+        input[type=range]::-moz-range-track {
+            background: #374151; /* dark-gray-700 */
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            background: #3b82f6; /* blue-500 */
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            margin-top: -6px; /* align thumb with track */
+        }
+         input[type=range]::-moz-range-thumb {
+            background: #3b82f6; /* blue-500 */
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-gray-300">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-6xl">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">Universal Image Converter</h1>
+            <p class="text-md text-gray-400 mt-2">Compress an image to JPEG or convert it into a size-optimized PDF.</p>
+        </header>
+
+        <main>
+            <!-- Controls Section -->
+            <div class="bg-slate-800 rounded-lg shadow-2xl p-6 mb-8 border border-slate-700">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                    <div class="flex flex-col">
+                        <label for="image-upload" class="mb-2 font-semibold text-gray-300">1. Upload Image</label>
+                        <input type="file" id="image-upload" accept="image/png, image/jpeg" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-blue-300 hover:file:bg-slate-600 cursor-pointer">
+                    </div>
+                     <div class="flex flex-col">
+                        <label for="format-toggle" class="mb-2 font-semibold text-gray-300 text-center">2. Output Format</label>
+                        <div class="flex items-center justify-center space-x-2 bg-slate-700 p-1 rounded-full">
+                           <button id="format-jpeg" class="w-full px-4 py-1 text-sm font-semibold rounded-full bg-blue-600 text-white">JPEG</button>
+                           <button id="format-pdf" class="w-full px-4 py-1 text-sm font-semibold rounded-full text-gray-300">PDF</button>
+                        </div>
+                    </div>
+                    <div class="flex flex-col">
+                        <label id="slider-label" for="slider" class="mb-2 font-semibold text-gray-300">3. Set Quality (<span id="slider-value">70</span>)</label>
+                        <input type="range" id="slider" min="1" max="100" value="70" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                    <div class="w-full">
+                        <button id="action-btn" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-600 disabled:text-gray-400 disabled:cursor-not-allowed" disabled>
+                            Compress to JPEG
+                        </button>
+                    </div>
+                </div>
+                <p id="error-message" class="text-red-400 text-center mt-4 hidden"></p>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loader-container" class="hidden text-center my-8">
+                <div class="loader inline-block"></div>
+                <p id="loader-text" class="text-gray-400 mt-2">Processing...</p>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results" class="hidden grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="bg-slate-800 rounded-lg shadow-2xl p-6 border border-slate-700">
+                    <h2 class="text-xl font-bold mb-4 text-center text-white">Original Image</h2>
+                    <canvas id="original-canvas" class="w-full h-auto rounded-md border border-slate-600"></canvas>
+                    <p id="original-size" class="text-center mt-4 font-semibold text-gray-400"></p>
+                </div>
+                <div class="bg-slate-800 rounded-lg shadow-2xl p-6 border border-slate-700">
+                    <h2 id="preview-title" class="text-xl font-bold mb-4 text-center text-white">Compressed Image Preview</h2>
+                    <canvas id="compressed-canvas" class="w-full h-auto rounded-md border border-slate-600"></canvas>
+                    <p id="compressed-size" class="text-center mt-4 font-semibold text-gray-400"></p>
+                </div>
+            </div>
+            
+             <div id="summary" class="hidden text-center bg-slate-800 rounded-lg shadow-2xl p-6 mt-8 border border-slate-700">
+                <p id="compression-ratio" class="text-lg font-semibold text-green-400"></p>
+                <a id="download-btn" href="#" download="compressed.jpg" class="mt-4 inline-block bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 transition-colors">Download JPEG</a>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // DOM Elements
+        const imageUpload = document.getElementById('image-upload');
+        const slider = document.getElementById('slider');
+        const sliderValue = document.getElementById('slider-value');
+        const actionBtn = document.getElementById('action-btn');
+        const loaderContainer = document.getElementById('loader-container');
+        const resultsDiv = document.getElementById('results');
+        const summaryDiv = document.getElementById('summary');
+        const errorMessage = document.getElementById('error-message');
+        const originalCanvas = document.getElementById('original-canvas');
+        const compressedCanvas = document.getElementById('compressed-canvas');
+        const originalSizeText = document.getElementById('original-size');
+        const compressedSizeText = document.getElementById('compressed-size');
+        const compressionRatioText = document.getElementById('compression-ratio');
+        const downloadBtn = document.getElementById('download-btn');
+        const formatJpegBtn = document.getElementById('format-jpeg');
+        const formatPdfBtn = document.getElementById('format-pdf');
+        
+        let originalImageData = null;
+        let originalFileSize = 0;
+        let currentObjectUrl = null;
+        let outputFormat = 'jpeg'; 
+        
+        // --- EVENT LISTENERS ---
+        slider.addEventListener('input', () => { sliderValue.textContent = slider.value; });
+        imageUpload.addEventListener('change', handleImageUpload);
+        actionBtn.addEventListener('click', handleAction);
+        formatJpegBtn.addEventListener('click', () => setOutputFormat('jpeg'));
+        formatPdfBtn.addEventListener('click', () => setOutputFormat('pdf'));
+
+        function setOutputFormat(format) {
+            outputFormat = format;
+            if (format === 'jpeg') {
+                formatJpegBtn.classList.add('bg-blue-600', 'text-white');
+                formatJpegBtn.classList.remove('text-gray-300');
+                formatPdfBtn.classList.remove('bg-blue-600', 'text-white');
+                formatPdfBtn.classList.add('text-gray-300');
+                actionBtn.textContent = 'Compress to JPEG';
+                downloadBtn.textContent = 'Download JPEG';
+                downloadBtn.download = 'compressed.jpg';
+            } else { // pdf
+                formatPdfBtn.classList.add('bg-blue-600', 'text-white');
+                formatPdfBtn.classList.remove('text-gray-300');
+                formatJpegBtn.classList.remove('bg-blue-600', 'text-white');
+                formatJpegBtn.classList.add('text-gray-300');
+                actionBtn.textContent = 'Create PDF';
+                downloadBtn.textContent = 'Download PDF';
+                downloadBtn.download = 'converted.pdf';
+            }
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorMessage.classList.add('hidden');
+        }
+
+        function handleImageUpload(e) {
+            hideError();
+            const file = e.target.files[0];
+            if (!file) {
+                actionBtn.disabled = true;
+                return;
+            };
+
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+            if (!allowedTypes.includes(file.type)) {
+                showError(`Invalid file type: "${file.type || 'unknown'}". Please upload a PNG or JPEG.`);
+                imageUpload.value = '';
+                actionBtn.disabled = true;
+                resultsDiv.classList.add('hidden');
+                summaryDiv.classList.add('hidden');
+                originalImageData = null;
+                return;
+            }
+
+            if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+            originalFileSize = file.size;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const ctx = originalCanvas.getContext('2d');
+                    originalCanvas.width = img.width;
+                    originalCanvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    originalImageData = ctx.getImageData(0, 0, img.width, img.height);
+                    actionBtn.disabled = false;
+                    resultsDiv.classList.remove('hidden');
+                    resultsDiv.classList.add('grid');
+                    summaryDiv.classList.add('hidden');
+                    compressedCanvas.getContext('2d').clearRect(0,0,compressedCanvas.width,compressedCanvas.height);
+                    compressedSizeText.textContent = '';
+                    originalSizeText.textContent = `Size: ${formatFileSize(originalFileSize)}`;
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleAction() {
+            if (!originalImageData) {
+                showError('Please upload an image first.');
+                return;
+            }
+            hideError();
+            loaderContainer.classList.remove('hidden');
+            actionBtn.disabled = true;
+            resultsDiv.classList.add('hidden');
+            summaryDiv.classList.add('hidden');
+
+            setTimeout(() => {
+                try {
+                    const value = parseInt(slider.value, 10);
+                    
+                    const compressedData = jpegCompress(originalImageData, value);
+                    const ctx = compressedCanvas.getContext('2d');
+                    compressedCanvas.width = compressedData.width;
+                    compressedCanvas.height = compressedData.height;
+                    ctx.putImageData(compressedData, 0, 0);
+                    const imageDataUrl = compressedCanvas.toDataURL('image/jpeg', value / 100);
+
+                    if (outputFormat === 'jpeg') {
+                        const blob = dataURLtoBlob(imageDataUrl);
+                        updateResults(blob.size, URL.createObjectURL(blob), true);
+                    } else { // pdf
+                        const { jsPDF } = window.jspdf;
+                        const imgWidth = originalImageData.width;
+                        const imgHeight = originalImageData.height;
+                        
+                        if (!imageDataUrl || imageDataUrl === 'data:,') {
+                            throw new Error('Failed to generate image data from canvas.');
+                        }
+
+                        const orientation = imgWidth > imgHeight ? 'l' : 'p';
+                        const doc = new jsPDF(orientation, 'px', [imgWidth, imgHeight]);
+                        const pdfWidth = doc.internal.pageSize.getWidth();
+                        const pdfHeight = doc.internal.pageSize.getHeight();
+
+                        doc.addImage(imageDataUrl, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                        const pdfBlob = doc.output('blob');
+                        updateResults(pdfBlob.size, URL.createObjectURL(pdfBlob), true);
+                    }
+
+                    resultsDiv.classList.remove('hidden');
+                    summaryDiv.classList.remove('hidden');
+
+                } catch (error) {
+                    console.error("Action Failed:", error);
+                    showError(`An error occurred: ${error.message}. Please try again.`);
+                } finally {
+                    loaderContainer.classList.add('hidden');
+                    actionBtn.disabled = false;
+                }
+            }, 50);
+        }
+        
+        // --- JPEG COMPRESSION LOGIC ---
+        const LUMINANCE_QUANTIZATION_TABLE = [16,11,10,16,24,40,51,61,12,12,14,19,26,58,60,55,14,13,16,24,40,57,69,56,14,17,22,29,51,87,80,62,18,22,37,56,68,109,103,77,24,35,55,64,81,104,113,92,49,64,78,87,103,121,120,101,72,92,95,98,112,100,103,99];
+        const CHROMINANCE_QUANTIZATION_TABLE = [17,18,24,47,99,99,99,99,18,21,26,66,99,99,99,99,24,26,56,99,99,99,99,99,47,66,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99];
+        const DCT_BASIS = new Array(8).fill(0).map(()=>new Array(8).fill(0));
+        for(let i=0;i<8;i++){for(let j=0;j<8;j++){DCT_BASIS[i][j]=Math.cos((2*i+1)*j*Math.PI/16);}}
+        function jpegCompress(imageData, quality) {const width = imageData.width, height = imageData.height;const paddedWidth = Math.ceil(width/8)*8, paddedHeight = Math.ceil(height/8)*8;const paddedData = padImage(imageData, paddedWidth, paddedHeight);const {y,cb,cr} = rgbToYcbcr(paddedData.data,paddedWidth,paddedHeight);const finalRgb = new Uint8ClampedArray(paddedWidth*paddedHeight*4);for(let i=0;i<paddedHeight;i+=8){for(let j=0;j<paddedWidth;j+=8){const yBlock=getBlock(y,j,i,paddedWidth),cbBlock=getBlock(cb,j,i,paddedWidth),crBlock=getBlock(cr,j,i,paddedWidth);const centeredY=centerBlock(yBlock),centeredCb=centerBlock(cbBlock),centeredCr=centerBlock(crBlock);const dctY=forwardDCT(centeredY),dctCb=forwardDCT(centeredCb),dctCr=forwardDCT(centeredCr);const quantY=quantize(dctY,LUMINANCE_QUANTIZATION_TABLE,quality),quantCb=quantize(dctCb,CHROMINANCE_QUANTIZATION_TABLE,quality),quantCr=quantize(dctCr,CHROMINANCE_QUANTIZATION_TABLE,quality);const dequantY=dequantize(quantY,LUMINANCE_QUANTIZATION_TABLE,quality),dequantCb=dequantize(quantCb,CHROMINANCE_QUANTIZATION_TABLE,quality),dequantCr=dequantize(quantCr,CHROMINANCE_QUANTIZATION_TABLE,quality);const idctY=inverseDCT(dequantY),idctCb=inverseDCT(dequantCb),idctCr=inverseDCT(dequantCr);const finalY=uncenterBlock(idctY),finalCb=uncenterBlock(idctCb),finalCr=uncenterBlock(idctCr);placeBlock(finalRgb,finalY,finalCb,finalCr,j,i,paddedWidth);}}const finalImageData=new ImageData(finalRgb,paddedWidth,paddedHeight);return cropImage(finalImageData,width,height);}
+        function padImage(imageData,newWidth,newHeight){const oldWidth=imageData.width,oldHeight=imageData.height,oldData=imageData.data,newData=new Uint8ClampedArray(newWidth*newHeight*4);for(let y=0;y<newHeight;y++){for(let x=0;x<newWidth;x++){const oldX=Math.min(x,oldWidth-1),oldY=Math.min(y,oldHeight-1),oldIndex=(oldY*oldWidth+oldX)*4,newIndex=(y*newWidth+x)*4;newData[newIndex]=oldData[oldIndex];newData[newIndex+1]=oldData[oldIndex+1];newData[newIndex+2]=oldData[oldIndex+2];newData[newIndex+3]=oldData[oldIndex+3];}}return{data:newData,width:newWidth,height:newHeight};}
+        function cropImage(imageData,newWidth,newHeight){const oldWidth=imageData.width,oldData=imageData.data,newData=new Uint8ClampedArray(newWidth*newHeight*4);for(let y=0;y<newHeight;y++){const oldRowStart=y*oldWidth*4,newRowStart=y*newWidth*4;newData.set(oldData.subarray(oldRowStart,oldRowStart+newWidth*4),newRowStart);}return new ImageData(newData,newWidth,newHeight);}
+        function rgbToYcbcr(data,width,height){const y=new Float32Array(width*height),cb=new Float32Array(width*height),cr=new Float32Array(width*height);for(let i=0;i<data.length;i+=4){const r=data[i],g=data[i+1],b=data[i+2],index=i/4;y[index]=.299*r+.587*g+.114*b;cb[index]=128-.168736*r-.331264*g+.5*b;cr[index]=128+.5*r-.418688*g-.081312*b;}return{y,cb,cr};}
+        function getBlock(channelData,startX,startY,width){const block=new Float32Array(64);for(let y=0;y<8;y++){for(let x=0;x<8;x++){block[y*8+x]=channelData[(startY+y)*width+(startX+x)];}}return block;}
+        function centerBlock(block){const newBlock=new Float32Array(64);for(let i=0;i<64;i++){newBlock[i]=block[i]-128;}return newBlock;}
+        function uncenterBlock(block){const newBlock=new Float32Array(64);for(let i=0;i<64;i++){newBlock[i]=block[i]+128;}return newBlock;}
+        function forwardDCT(block){const dctCoeffs=new Float32Array(64);for(let v=0;v<8;v++){for(let u=0;u<8;u++){let sum=0;for(let y=0;y<8;y++){for(let x=0;x<8;x++){sum+=block[y*8+x]*DCT_BASIS[x][u]*DCT_BASIS[y][v];}}const cu=u===0?1/Math.sqrt(2):1,cv=v===0?1/Math.sqrt(2):1;dctCoeffs[v*8+u]=.25*cu*cv*sum;}}return dctCoeffs;}
+        function quantize(dctBlock,qTable,quality){const scale=quality<50?5000/quality:200-2*quality,qBlock=new Float32Array(64);for(let i=0;i<64;i++){const qValue=(qTable[i]*scale+50)/100;qBlock[i]=Math.round(dctBlock[i]/qValue);}return qBlock;}
+        function dequantize(qBlock,qTable,quality){const scale=quality<50?5000/quality:200-2*quality,dctBlock=new Float32Array(64);for(let i=0;i<64;i++){const qValue=(qTable[i]*scale+50)/100;dctBlock[i]=qBlock[i]*qValue;}return dctBlock;}
+        function inverseDCT(dctCoeffs){const block=new Float32Array(64);for(let y=0;y<8;y++){for(let x=0;x<8;x++){let sum=0;for(let v=0;v<8;v++){for(let u=0;u<8;u++){const cu=u===0?1/Math.sqrt(2):1,cv=v===0?1/Math.sqrt(2):1;sum+=cu*cv*dctCoeffs[v*8+u]*DCT_BASIS[x][u]*DCT_BASIS[y][v];}}block[y*8+x]=.25*sum;}}return block;}
+        function placeBlock(finalRgb,yBlock,cbBlock,crBlock,startX,startY,width){for(let y=0;y<8;y++){for(let x=0;x<8;x++){const blockIndex=y*8+x,Y=yBlock[blockIndex],Cb=cbBlock[blockIndex],Cr=crBlock[blockIndex],r=Y+1.402*(Cr-128),g=Y-.344136*(Cb-128)-.714136*(Cr-128),b=Y+1.772*(Cb-128),finalIndex=((startY+y)*width+(startX+x))*4;finalRgb[finalIndex]=r;finalRgb[finalIndex+1]=g;finalRgb[finalIndex+2]=b;finalRgb[finalIndex+3]=255;}}}
+        
+        // --- GENERAL HELPER FUNCTIONS ---
+        function updateResults(compressedSize, url, isBlobUrl = false) {
+            compressedSizeText.textContent = `Size: ${formatFileSize(compressedSize)}`;
+            const ratio = (1 - compressedSize / originalFileSize) * 100;
+            compressionRatioText.textContent = `Size Reduction: ${ratio > 0 ? ratio.toFixed(2) : 0}%`;
+            if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+            currentObjectUrl = url;
+            downloadBtn.href = currentObjectUrl;
+        }
+        function formatFileSize(bytes){if(bytes===0)return'0 Bytes';const k=1024,sizes=['Bytes','KB','MB','GB'],i=Math.floor(Math.log(bytes)/Math.log(k));return parseFloat((bytes/Math.pow(k,i)).toFixed(2))+' '+sizes[i];}
+        function dataURLtoBlob(dataurl){let arr=dataurl.split(','),mime=arr[0].match(/:(.*?);/)[1],bstr=atob(arr[1]),n=bstr.length,u8arr=new Uint8Array(n);while(n--){u8arr[n]=bstr.charCodeAt(n);}return new Blob([u8arr],{type:mime});}
+        
+    </script>
+</body>
+</html>

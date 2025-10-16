@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Folder Compressor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- JSZip library for creating ZIP files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Browser Image Compression library -->
+    <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.1/dist/browser-image-compression.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .file-input-label {
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+        .file-input-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        #compressBtn:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        /* Custom styles for the compression level selector */
+        .compression-label {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .compression-input:checked + .compression-label {
+            background-color: #06b6d4; /* cyan-600 */
+            border-color: #0891b2;   /* cyan-700 */
+            color: white;
+            transform: scale(1.02);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-2xl mx-auto p-6 md:p-8 bg-gray-800 rounded-2xl shadow-2xl border border-gray-700">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-cyan-400">Advanced Folder Compressor</h1>
+            <p class="text-gray-400 mt-3 max-w-md mx-auto">Create a highly-optimized ZIP file from any folder.</p>
+        </div>
+
+        <div class="mb-6">
+            <h2 class="text-lg font-semibold text-gray-300 mb-3"><span class="bg-cyan-500 text-gray-900 rounded-full w-7 h-7 inline-flex items-center justify-center font-bold mr-2">1</span> Select a Folder</h2>
+            <label for="folderInput" class="file-input-label bg-gray-700 border-2 border-dashed border-gray-500 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-cyan-400 hover:bg-gray-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-gray-400 mb-3" fill="none" viewBox="0.0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                </svg>
+                <span id="folderName" class="font-semibold text-lg text-gray-200">Click to Select a Folder</span>
+                <span id="folderInfo" class="text-sm text-gray-500 mt-1">All sub-folders and files will be included</span>
+            </label>
+            <input type="file" id="folderInput" class="hidden" webkitdirectory>
+        </div>
+
+        <div class="mb-8">
+            <h2 class="text-lg font-semibold text-gray-300 mb-3"><span class="bg-cyan-500 text-gray-900 rounded-full w-7 h-7 inline-flex items-center justify-center font-bold mr-2">2</span> Choose Compression Level</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <!-- Standard -->
+                <div>
+                    <input type="radio" name="compression" id="level-standard" value="standard" class="hidden compression-input">
+                    <label for="level-standard" class="compression-label block w-full text-center p-4 rounded-lg bg-gray-700 border-2 border-gray-600 hover:border-cyan-500">
+                        <span class="font-bold text-base block">Standard</span>
+                        <span class="text-xs text-gray-400 block">No image optimization. Best for documents.</span>
+                    </label>
+                </div>
+                <!-- Recommended -->
+                <div>
+                    <input type="radio" name="compression" id="level-recommended" value="recommended" class="hidden compression-input" checked>
+                    <label for="level-recommended" class="compression-label block w-full text-center p-4 rounded-lg bg-gray-700 border-2 border-gray-600 hover:border-cyan-500">
+                        <span class="font-bold text-base block">Recommended</span>
+                        <span class="text-xs text-gray-400 block">Good balance of image quality and size.</span>
+                    </label>
+                </div>
+                <!-- Extreme -->
+                <div>
+                    <input type="radio" name="compression" id="level-extreme" value="extreme" class="hidden compression-input">
+                    <label for="level-extreme" class="compression-label block w-full text-center p-4 rounded-lg bg-gray-700 border-2 border-gray-600 hover:border-cyan-500">
+                        <span class="font-bold text-base block">Extreme</span>
+                        <span class="text-xs text-gray-400 block">Smallest size for email. Noticeable quality loss.</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-center">
+            <button id="compressBtn" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-8 rounded-lg text-lg shadow-lg hover:shadow-cyan-500/50 transition-all duration-300 disabled:shadow-none disabled:hover:bg-cyan-500">
+                Compress and Download
+            </button>
+        </div>
+
+        <div id="status" class="text-center mt-6 text-lg font-medium text-green-400 h-8"></div>
+        <div id="downloadLinkContainer" class="text-center mt-4"></div>
+    </div>
+
+    <script>
+        const folderInput = document.getElementById('folderInput');
+        const folderNameDiv = document.getElementById('folderName');
+        const folderInfoDiv = document.getElementById('folderInfo');
+        const compressBtn = document.getElementById('compressBtn');
+        const statusDiv = document.getElementById('status');
+        const downloadLinkContainer = document.getElementById('downloadLinkContainer');
+        
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        folderInput.addEventListener('change', () => {
+            downloadLinkContainer.innerHTML = '';
+            statusDiv.textContent = '';
+            const files = folderInput.files;
+            if (files.length > 0) {
+                const folderName = files[0].webkitRelativePath.split('/')[0];
+                const totalSize = Array.from(files).reduce((acc, file) => acc + file.size, 0);
+                folderNameDiv.textContent = `Folder: ${folderName}`;
+                folderInfoDiv.textContent = `${files.length} files found (${formatBytes(totalSize)})`;
+            } else {
+                folderNameDiv.textContent = 'Click to Select a Folder';
+                folderInfoDiv.textContent = 'All sub-folders and files will be included';
+            }
+        });
+
+        compressBtn.addEventListener('click', async () => {
+            if (folderInput.files.length === 0) {
+                statusDiv.textContent = 'Please select a folder first!';
+                statusDiv.classList.add('text-red-400');
+                return;
+            }
+
+            compressBtn.disabled = true;
+            statusDiv.textContent = 'Preparing files...';
+            statusDiv.classList.add('text-green-400');
+            downloadLinkContainer.innerHTML = '';
+
+            try {
+                const zip = new JSZip();
+                const folderName = folderInput.files[0].webkitRelativePath.split('/')[0];
+                const filesToProcess = Array.from(folderInput.files);
+                const compressionLevel = document.querySelector('input[name="compression"]:checked').value;
+
+                for (let i = 0; i < filesToProcess.length; i++) {
+                    const file = filesToProcess[i];
+                    let fileToAdd = file;
+
+                    const isImage = file.type.startsWith('image/jpeg') || file.type.startsWith('image/png');
+                    
+                    if (isImage && compressionLevel !== 'standard') {
+                        statusDiv.textContent = `Optimizing image ${i + 1} of ${filesToProcess.length}...`;
+                        let options = {};
+                        if (compressionLevel === 'recommended') {
+                            options = { maxSizeMB: 0.8, maxWidthOrHeight: 1920, useWebWorker: true };
+                        } else if (compressionLevel === 'extreme') {
+                            options = { maxSizeMB: 0.4, maxWidthOrHeight: 1280, useWebWorker: true, initialQuality: 0.6 };
+                        }
+                        
+                        try {
+                            const compressedFile = await imageCompression(file, options);
+                            fileToAdd = new File([compressedFile], file.name, { type: compressedFile.type });
+                        } catch (error) {
+                            console.warn(`Could not optimize ${file.name}, adding original. Error:`, error);
+                        }
+                    }
+                    
+                    zip.file(file.webkitRelativePath, fileToAdd);
+                }
+
+                statusDiv.textContent = 'Generating ZIP file...';
+                const content = await zip.generateAsync({
+                    type: "blob",
+                    compression: "DEFLATE",
+                    compressionOptions: { level: 9 }
+                }, (metadata) => {
+                    statusDiv.textContent = `Compressing... ${metadata.percent.toFixed(0)}%`;
+                });
+                
+                const url = URL.createObjectURL(content);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = url;
+                downloadLink.download = `${folderName}_${compressionLevel}.zip`;
+                downloadLink.textContent = `Download ZIP (${formatBytes(content.size)})`;
+                downloadLink.className = 'bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg text-lg shadow-lg hover:shadow-green-500/50 transition-all duration-300 inline-block';
+
+                downloadLinkContainer.appendChild(downloadLink);
+                statusDiv.textContent = 'Compression complete!';
+
+            } catch (error) {
+                console.error("Compression Error:", error);
+                statusDiv.textContent = 'An error occurred during compression.';
+                statusDiv.classList.add('text-red-400');
+            } finally {
+                compressBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

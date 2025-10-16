@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JPEG Compressor</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom styles for a modern, dark theme */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom styles for the range slider */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #4a5568; /* gray-700 */
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #4299e1; /* blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #1a202c; /* gray-900 */
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #4299e1; /* blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #1a202c; /* gray-900 */
+        }
+        /* Custom file input button */
+        .file-input-button {
+            cursor: pointer;
+        }
+        /* Simple spinner for loading state */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-left-color: #4299e1;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* Active tab style */
+        .tab-active {
+            color: white;
+            border-bottom: 2px solid #3b82f6; /* blue-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex items-center justify-center min-h-screen p-4">
+    <div class="container max-w-6xl w-full bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 space-y-8">
+        <!-- Header -->
+        <header class="text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">Client-Side JPEG Compressor</h1>
+            <p class="text-gray-400 mt-2">Set your desired quality, then upload an image to compress.</p>
+        </header>
+
+        <!-- Tabs -->
+        <div class="flex border-b border-gray-700">
+            <button id="compressor-tab" class="px-4 py-2 font-semibold tab-active">Compressor</button>
+            <button id="history-tab" class="px-4 py-2 text-gray-400 font-semibold">History</button>
+        </div>
+
+        <!-- Compressor View -->
+        <div id="compressor-view">
+            <!-- Controls Area -->
+            <div id="controls-area" class="space-y-4 bg-gray-900/50 p-6 rounded-xl">
+                <div class="flex justify-between items-center">
+                    <label for="quality-slider" class="font-medium text-white">Quality:</label>
+                    <span id="quality-value" class="font-bold text-blue-400 text-lg">80%</span>
+                </div>
+                <input type="range" id="quality-slider" min="1" max="100" value="80" class="w-full h-2 rounded-lg cursor-pointer">
+            </div>
+
+            <!-- Upload Area -->
+            <div id="upload-area" class="mt-8 text-center p-8 border-2 border-dashed border-gray-600 rounded-xl hover:border-blue-500 transition-colors duration-300">
+                <label for="file-input" class="file-input-button w-full">
+                    <div class="flex flex-col items-center justify-center space-y-4">
+                        <svg class="w-12 h-12 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l-3 3m3-3l3-3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.33 0 4.5 4.5 0 01-1.41 8.775H6.75z" />
+                        </svg>
+                        <span class="font-semibold text-lg text-white">Click to upload or drag & drop</span>
+                        <span class="text-gray-400 text-sm">JPG or JPEG files only</span>
+                    </div>
+                </label>
+                <input type="file" id="file-input" class="hidden" accept="image/jpeg, image/jpg">
+            </div>
+            
+            <!-- Error Message -->
+            <div id="error-message" class="hidden mt-8 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded-lg text-center" role="alert">
+                <span class="block sm:inline">Please select a valid JPG/JPEG file.</span>
+            </div>
+            
+            <!-- Image Previews (hidden initially) -->
+            <div id="preview-area" class="hidden mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                <!-- Original Image -->
+                <div class="bg-gray-900/50 p-4 rounded-xl flex flex-col items-center">
+                    <h2 class="text-xl font-semibold mb-3 text-white">Original</h2>
+                    <img id="original-image-preview" src="" alt="Original Image" class="max-w-full h-auto rounded-lg shadow-md">
+                    <div class="mt-4 text-center">
+                        <p id="original-size" class="text-lg font-medium text-gray-300"></p>
+                        <p id="original-dimensions" class="text-sm text-gray-500"></p>
+                    </div>
+                </div>
+
+                <!-- Compressed Image -->
+                <div class="bg-gray-900/50 p-4 rounded-xl flex flex-col items-center">
+                    <h2 class="text-xl font-semibold mb-3 text-white">Compressed</h2>
+                    <div id="compressed-image-container" class="relative w-full flex items-center justify-center">
+                        <img id="compressed-image-preview" src="" alt="Compressed Image" class="max-w-full h-auto rounded-lg shadow-md opacity-0 transition-opacity duration-300">
+                        <div id="spinner-container" class="absolute inset-0 flex items-center justify-center">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-center">
+                        <p id="compressed-size" class="text-lg font-medium text-green-400"></p>
+                        <p id="size-reduction" class="text-sm text-green-500 font-semibold"></p>
+                    </div>
+                    <a id="download-button" href="#" download="compressed-image.jpg" class="mt-4 inline-block bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
+                        Download
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div id="history-view" class="hidden">
+            <div class="flex justify-end mb-4">
+                <button id="clear-history-button" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors">Clear History</button>
+            </div>
+            <div id="history-items-container" class="space-y-4">
+                <p id="no-history-message" class="text-center text-gray-500 py-8">No compression history found.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM element references ---
+            const fileInput = document.getElementById('file-input');
+            const uploadArea = document.getElementById('upload-area');
+            const controlsArea = document.getElementById('controls-area');
+            const previewArea = document.getElementById('preview-area');
+            const qualitySlider = document.getElementById('quality-slider');
+            const qualityValue = document.getElementById('quality-value');
+            
+            const originalImagePreview = document.getElementById('original-image-preview');
+            const originalSize = document.getElementById('original-size');
+            const originalDimensions = document.getElementById('original-dimensions');
+            
+            const compressedImagePreview = document.getElementById('compressed-image-preview');
+            const compressedSize = document.getElementById('compressed-size');
+            const sizeReduction = document.getElementById('size-reduction');
+            const downloadButton = document.getElementById('download-button');
+            const errorMessage = document.getElementById('error-message');
+            const spinner = document.getElementById('spinner-container');
+
+            // Tabs and Views
+            const compressorTab = document.getElementById('compressor-tab');
+            const historyTab = document.getElementById('history-tab');
+            const compressorView = document.getElementById('compressor-view');
+            const historyView = document.getElementById('history-view');
+            const historyItemsContainer = document.getElementById('history-items-container');
+            const noHistoryMessage = document.getElementById('no-history-message');
+            const clearHistoryButton = document.getElementById('clear-history-button');
+
+            // --- State Variables ---
+            let originalFile = null;
+            let originalImageURL = null;
+            let userId = null;
+
+            // --- Initialization ---
+            function initializeApp() {
+                userId = getUserId();
+                setupEventListeners();
+                renderHistory();
+            }
+            
+            function getUserId() {
+                let id = localStorage.getItem('jpegCompressorUserId');
+                if (!id) {
+                    id = crypto.randomUUID();
+                    localStorage.setItem('jpegCompressorUserId', id);
+                }
+                return id;
+            }
+
+            // --- Event Listeners Setup ---
+            function setupEventListeners() {
+                fileInput.addEventListener('change', handleFileSelect);
+                
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    uploadArea.addEventListener(eventName, preventDefaults, false);
+                });
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    uploadArea.addEventListener(eventName, () => uploadArea.classList.add('border-blue-500'), false);
+                });
+                ['dragleave', 'drop'].forEach(eventName => {
+                    uploadArea.addEventListener(eventName, () => uploadArea.classList.remove('border-blue-500'), false);
+                });
+                uploadArea.addEventListener('drop', handleDrop, false);
+
+                qualitySlider.addEventListener('input', () => {
+                    qualityValue.textContent = `${qualitySlider.value}%`;
+                    if (originalFile) {
+                        compressImage();
+                    }
+                });
+
+                compressorTab.addEventListener('click', () => switchTab('compressor'));
+                historyTab.addEventListener('click', () => switchTab('history'));
+                clearHistoryButton.addEventListener('click', clearHistory);
+            }
+
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    handleFileSelect({ target: fileInput });
+                }
+            }
+
+            function handleFileSelect(event) {
+                const file = event.target.files[0];
+                if (!file || !['image/jpeg', 'image/jpg'].includes(file.type)) {
+                    showError(true);
+                    return;
+                }
+                showError(false);
+                originalFile = file;
+                
+                uploadArea.classList.add('hidden');
+                previewArea.classList.remove('hidden');
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    originalImageURL = e.target.result;
+                    originalImagePreview.src = originalImageURL;
+                    originalSize.textContent = `Size: ${formatBytes(originalFile.size)}`;
+                    
+                    originalImagePreview.onload = () => {
+                        originalDimensions.textContent = `Dimensions: ${originalImagePreview.naturalWidth} x ${originalImagePreview.naturalHeight}`;
+                        compressImage();
+                    };
+                };
+                reader.readAsDataURL(originalFile);
+            }
+
+            function compressImage() {
+                if (!originalImageURL) return;
+                showSpinner(true);
+                
+                const quality = parseInt(qualitySlider.value) / 100;
+                const image = new Image();
+                image.src = originalImageURL;
+                
+                image.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = image.naturalWidth;
+                    canvas.height = image.naturalHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(image, 0, 0);
+                    
+                    const compressedDataURL = canvas.toDataURL('image/jpeg', quality);
+                    
+                    compressedImagePreview.src = compressedDataURL;
+                    compressedImagePreview.onload = () => {
+                        showSpinner(false);
+                        compressedImagePreview.classList.add('opacity-100');
+                    };
+
+                    const compressedBlob = dataURLtoBlob(compressedDataURL);
+                    const compressedFileSizeBytes = compressedBlob.size;
+
+                    compressedSize.textContent = `Size: ${formatBytes(compressedFileSizeBytes)}`;
+                    const reduction = ((originalFile.size - compressedFileSizeBytes) / originalFile.size) * 100;
+                    sizeReduction.textContent = `Saved: ${reduction.toFixed(1)}%`;
+                    
+                    downloadButton.href = compressedDataURL;
+                    const originalFileName = originalFile.name.replace(/\.[^/.]+$/, "");
+                    downloadButton.download = `${originalFileName}-compressed.jpg`;
+                    
+                    saveToHistory({
+                        id: crypto.randomUUID(),
+                        timestamp: new Date().toISOString(),
+                        originalSize: originalFile.size,
+                        compressedSize: compressedFileSizeBytes,
+                        quality: qualitySlider.value,
+                        imageDataUrl: compressedDataURL,
+                        originalFileName: originalFile.name
+                    });
+                };
+            }
+            
+            function getHistory() {
+                const historyJson = localStorage.getItem(`jpegCompressorHistory_${userId}`);
+                return historyJson ? JSON.parse(historyJson) : [];
+            }
+
+            function saveToHistory(entry) {
+                let history = getHistory();
+                history.unshift(entry); 
+                if (history.length > 50) { 
+                    history = history.slice(0, 50);
+                }
+                localStorage.setItem(`jpegCompressorHistory_${userId}`, JSON.stringify(history));
+                renderHistory(); 
+            }
+
+            function renderHistory() {
+                const history = getHistory();
+                historyItemsContainer.innerHTML = '';
+                
+                if (history.length === 0) {
+                    historyItemsContainer.appendChild(noHistoryMessage);
+                    noHistoryMessage.classList.remove('hidden');
+                } else {
+                    noHistoryMessage.classList.add('hidden');
+                    history.forEach(item => {
+                        const historyItemEl = document.createElement('div');
+                        historyItemEl.className = 'bg-gray-900/50 p-4 rounded-xl flex items-center space-x-4';
+                        
+                        historyItemEl.innerHTML = `
+                            <img src="${item.imageDataUrl}" alt="Compressed thumbnail" class="w-20 h-20 object-cover rounded-md">
+                            <div class="flex-grow">
+                                <p class="font-semibold text-white">${item.originalFileName}</p>
+                                <p class="text-sm text-gray-400">
+                                    ${formatBytes(item.originalSize)} → <span class="text-green-400 font-medium">${formatBytes(item.compressedSize)}</span> 
+                                    at ${item.quality}% quality
+                                </p>
+                                <p class="text-xs text-gray-500">${new Date(item.timestamp).toLocaleString()}</p>
+                            </div>
+                            <a href="${item.imageDataUrl}" download="${item.originalFileName.replace(/\.[^/.]+$/, "")}-compressed.jpg" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+                                Download
+                            </a>
+                        `;
+                        historyItemsContainer.appendChild(historyItemEl);
+                    });
+                }
+            }
+
+            function clearHistory() {
+                localStorage.removeItem(`jpegCompressorHistory_${userId}`);
+                renderHistory();
+            }
+
+            // --- UI and Helper Functions ---
+            function switchTab(tabName) {
+                if (tabName === 'compressor') {
+                    compressorView.classList.remove('hidden');
+                    historyView.classList.add('hidden');
+                    compressorTab.classList.add('tab-active', 'text-white');
+                    historyTab.classList.remove('tab-active', 'text-white');
+                } else {
+                    historyView.classList.remove('hidden');
+                    compressorView.classList.add('hidden');
+                    historyTab.classList.add('tab-active', 'text-white');
+                    compressorTab.classList.remove('tab-active', 'text-white');
+                    renderHistory(); // Always refresh history when switching to it
+                }
+            }
+            
+            function showError(show) {
+                errorMessage.classList.toggle('hidden', !show);
+            }
+            
+            function showSpinner(show) {
+                spinner.classList.toggle('hidden', !show);
+                compressedImagePreview.classList.toggle('opacity-0', show);
+            }
+            
+            function formatBytes(bytes, decimals = 2) {
+                if (!+bytes) return '0 Bytes';
+                const k = 1024;
+                const dm = decimals < 0 ? 0 : decimals;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+            }
+
+            function dataURLtoBlob(dataurl) {
+                const arr = dataurl.split(',');
+                const mime = arr[0].match(/:(.*?);/)[1];
+                const bstr = atob(arr[1]);
+                let n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                while (n--) {
+                    u8arr[n] = bstr.charCodeAt(n);
+                }
+                return new Blob([u8arr], { type: mime });
+            }
+
+            initializeApp();
+        });
+    </script>
+</body>
+</html>
