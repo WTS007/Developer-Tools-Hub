@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Image Compressor</title>
+    <title>PDF Compressor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- PDF.js for reading/rendering PDFs -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
     <!-- pdf-lib.js for creating/writing PDFs -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <!-- JSZip for batch processing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
         .loader {
-            border: 4px solid #4A5568; /* dark-gray-600 */
-            border-top: 4px solid #3b82f6; /* blue-500 */
+            border: 4px solid #475569; /* slate-600 */
+            border-top: 4px solid #4f46e5; /* indigo-600 */
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -25,84 +27,142 @@
             100% { transform: rotate(360deg); }
         }
         /* Custom slider styles for dark theme */
-        input[type=range]::-webkit-slider-runnable-track {
-            background: #374151; /* dark-gray-700 */
-        }
-        input[type=range]::-moz-range-track {
-            background: #374151; /* dark-gray-700 */
-        }
+        input[type=range]::-webkit-slider-runnable-track { background: #334155; }
+        input[type=range]::-moz-range-track { background: #334155; }
         input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            background: #3b82f6; /* blue-500 */
-            height: 16px;
-            width: 16px;
-            border-radius: 50%;
-            cursor: pointer;
-            margin-top: -6px; /* align thumb with track */
+            -webkit-appearance: none; appearance: none;
+            background: #4f46e5; height: 1.25rem; width: 1.25rem;
+            border-radius: 50%; cursor: pointer; margin-top: -6px; transition: transform .2s ease-in-out;
         }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.1); }
         input[type=range]::-moz-range-thumb {
-            background: #3b82f6; /* blue-500 */
-            height: 16px;
-            width: 16px;
-            border-radius: 50%;
-            cursor: pointer;
-            border: none;
+            background: #4f46e5; height: 1.25rem; width: 1.25rem;
+            border-radius: 50%; cursor: pointer; border: none;
+        }
+        .drag-area-highlight {
+            border-color: #4f46e5;
+            background-color: #1e293b;
+        }
+        .step-transition {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+        .step-hidden {
+            opacity: 0;
+            transform: translateY(20px);
+            position: absolute;
+            pointer-events: none;
+        }
+        .step-visible {
+            opacity: 1;
+            transform: translateY(0);
+            position: static;
         }
     </style>
 </head>
-<body class="bg-slate-900 text-gray-300">
+<body class="bg-slate-900 text-gray-300 antialiased">
 
-    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
-        <header class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-white">PDF Image Compressor</h1>
-            <p class="text-md text-gray-400 mt-2">Reduces the file size of PDFs by re-compressing the images inside them.</p>
+    <div class="container mx-auto p-4 md:p-8 max-w-2xl">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">PDF Compressor</h1>
+            <p class="text-md text-gray-400 mt-2 max-w-2xl mx-auto">Reduce PDF file size in a few easy steps.</p>
         </header>
 
-        <main>
-            <!-- Controls Section -->
-            <div class="bg-slate-800 rounded-lg shadow-2xl p-6 mb-8 border border-slate-700">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                    <div class="flex flex-col">
-                        <label for="pdf-upload" class="mb-2 font-semibold text-gray-300">1. Upload PDF</label>
-                        <input type="file" id="pdf-upload" accept="application/pdf" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-blue-300 hover:file:bg-slate-600 cursor-pointer">
+        <main class="relative">
+            <!-- Step 1: Upload Section -->
+            <div id="step-1" class="step-transition step-visible space-y-8">
+                 <div class="bg-slate-800 rounded-xl shadow-2xl p-6 border border-slate-700 text-center">
+                    <div id="drag-drop-area" class="border-2 border-dashed border-slate-600 rounded-lg p-10 cursor-pointer hover:bg-slate-700/50 transition-colors">
+                        <input type="file" id="pdf-upload" accept="application/pdf" class="hidden" multiple>
+                        <div class="flex flex-col items-center justify-center space-y-4">
+                            <svg class="w-12 h-12 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l-3 3m3-3l3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                            </svg>
+                            <p class="text-lg font-semibold text-gray-300">Drag & drop PDF files here</p>
+                            <p class="text-gray-500">or</p>
+                            <button id="browse-btn" type="button" class="bg-indigo-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition-colors">
+                                Browse Files
+                            </button>
+                        </div>
                     </div>
-                    <div class="flex flex-col">
-                        <label for="slider" class="mb-2 font-semibold text-gray-300">2. Set Image Quality (<span id="slider-value">75</span>)</label>
-                        <input type="range" id="slider" min="1" max="100" value="75" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Step 2: Settings & Action -->
+            <div id="step-2" class="step-transition step-hidden space-y-8">
+                <div class="bg-slate-800 rounded-xl shadow-2xl p-6 border border-slate-700">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Configure Settings</h2>
+                        <button id="back-to-upload-btn" type="button" class="text-sm text-indigo-400 hover:underline">Change files</button>
                     </div>
-                    <div class="w-full">
-                        <button id="compress-btn" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors disabled:bg-slate-600 disabled:text-gray-400 disabled:cursor-not-allowed" disabled>
+
+                    <!-- File List -->
+                    <div id="file-list-container" class="text-left mb-6">
+                        <h3 class="font-semibold text-white mb-2">Selected Files:</h3>
+                        <ul id="file-list" class="space-y-2 text-gray-400 max-h-48 overflow-y-auto pr-2"></ul>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="flex flex-col">
+                            <label class="mb-3 font-semibold text-gray-300">1. Choose PDF Content Type</label>
+                            <div class="flex items-center space-x-2 bg-slate-700/50 p-1.5 rounded-lg">
+                                <label for="mode-text" class="flex items-center justify-center cursor-pointer w-1/2">
+                                    <input type="radio" id="mode-text" name="mode" value="text" class="hidden" checked>
+                                    <span class="mode-label text-sm font-medium p-2 rounded-md w-full text-center bg-indigo-600 text-white transition-colors">Text & Vectors</span>
+                                </label>
+                                <label for="mode-image" class="flex items-center justify-center cursor-pointer w-1/2">
+                                    <input type="radio" id="mode-image" name="mode" value="image" class="hidden">
+                                    <span class="mode-label text-sm font-medium p-2 rounded-md w-full text-center text-gray-300 transition-colors">Images & Scans</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="quality-slider-container" class="flex flex-col hidden">
+                            <label for="slider" class="mb-3 font-semibold text-gray-300">2. Set Image Quality (<span id="slider-value">75</span>)</label>
+                            <input type="range" id="slider" min="1" max="100" value="75" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                    </div>
+                    <div class="mt-8 border-t border-slate-700 pt-6">
+                        <button id="compress-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 text-lg rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition-colors">
                             Compress PDF
                         </button>
                     </div>
+                    <p id="error-message" class="text-red-400 text-center mt-4 hidden"></p>
                 </div>
-                <p id="error-message" class="text-red-400 text-center mt-4 hidden"></p>
             </div>
 
-            <!-- Status/Results Section -->
-            <div id="status-container" class="hidden bg-slate-800 rounded-lg shadow-2xl p-6 text-center border border-slate-700">
-                <div id="loader-section" class="hidden">
-                    <div class="loader inline-block"></div>
-                    <p id="status-text" class="text-gray-400 mt-2 font-semibold">Processing...</p>
-                </div>
-                <div id="summary-section" class="hidden">
-                    <h2 class="text-xl font-bold mb-4 text-white">Compression Complete!</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 divide-y md:divide-y-0 md:divide-x divide-slate-700 py-4">
-                        <div class="pt-2 md:pt-0">
-                            <p class="text-gray-400">Original Size</p>
-                            <p id="original-size" class="font-bold text-lg text-gray-200"></p>
+            <!-- Step 3: Status/Results Section -->
+            <div id="step-3" class="step-transition step-hidden">
+                <div class="bg-slate-800 rounded-xl shadow-2xl p-8 text-center border border-slate-700">
+                    <div id="loader-section" class="hidden">
+                        <div class="loader inline-block"></div>
+                        <p id="status-text" class="text-gray-400 mt-4 text-lg font-semibold">Processing...</p>
+                    </div>
+                    <div id="summary-section" class="hidden">
+                        <h2 class="text-2xl font-bold mb-6 text-white">Compression Complete!</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 divide-y md:divide-y-0 md:divide-x divide-slate-700 py-4">
+                            <div class="py-4 md:py-0">
+                                <p class="text-gray-400 uppercase text-sm font-bold tracking-wider">Original Size</p>
+                                <p id="original-size" class="font-bold text-2xl text-gray-200 mt-2"></p>
+                            </div>
+                            <div class="py-4 md:py-0">
+                                <p class="text-gray-400 uppercase text-sm font-bold tracking-wider">New Size</p>
+                                <p id="compressed-size" class="font-bold text-2xl text-indigo-400 mt-2"></p>
+                            </div>
+                            <div class="py-4 md:py-0">
+                                <p class="text-gray-400 uppercase text-sm font-bold tracking-wider">Reduction</p>
+                                <p id="reduction-percent" class="font-bold text-2xl text-green-400 mt-2"></p>
+                            </div>
                         </div>
-                        <div class="pt-2 md:pt-0">
-                            <p class="text-gray-400">New Size</p>
-                            <p id="compressed-size" class="font-bold text-lg text-blue-400"></p>
-                        </div>
-                        <div class="pt-2 md:pt-0">
-                            <p class="text-gray-400">Reduction</p>
-                            <p id="reduction-percent" class="font-bold text-lg text-green-400"></p>
+                        <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                             <a id="download-btn" href="#" download="compressed.pdf" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                  <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                                  <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+                                </svg>
+                                <span>Download</span>
+                            </a>
+                            <button id="start-over-btn" type="button" class="w-full sm:w-auto bg-slate-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-slate-700 transition-colors">Start Over</button>
                         </div>
                     </div>
-                    <a id="download-btn" href="#" download="compressed.pdf" class="mt-6 inline-block bg-green-600 text-white font-bold py-2 px-8 rounded-lg hover:bg-green-700 transition-colors">Download PDF</a>
                 </div>
             </div>
         </main>
@@ -113,11 +173,14 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
 
         // DOM Elements
+        const step1 = document.getElementById('step-1');
+        const step2 = document.getElementById('step-2');
+        const step3 = document.getElementById('step-3');
         const pdfUpload = document.getElementById('pdf-upload');
         const slider = document.getElementById('slider');
         const sliderValue = document.getElementById('slider-value');
+        const qualitySliderContainer = document.getElementById('quality-slider-container');
         const compressBtn = document.getElementById('compress-btn');
-        const statusContainer = document.getElementById('status-container');
         const loaderSection = document.getElementById('loader-section');
         const summarySection = document.getElementById('summary-section');
         const statusText = document.getElementById('status-text');
@@ -126,14 +189,85 @@
         const compressedSizeText = document.getElementById('compressed-size');
         const reductionPercentText = document.getElementById('reduction-percent');
         const downloadBtn = document.getElementById('download-btn');
+        const fileListContainer = document.getElementById('file-list-container');
+        const fileList = document.getElementById('file-list');
+        const modeRadios = document.querySelectorAll('input[name="mode"]');
+        const browseBtn = document.getElementById('browse-btn');
+        const dragDropArea = document.getElementById('drag-drop-area');
+        const backToUploadBtn = document.getElementById('back-to-upload-btn');
+        const startOverBtn = document.getElementById('start-over-btn');
 
-        let originalPdfFile = null;
+        let uploadedFiles = [];
         let currentObjectUrl = null;
 
+        // --- UI NAVIGATION ---
+        function goToStep(stepNumber) {
+            [step1, step2, step3].forEach((step, index) => {
+                if (index + 1 === stepNumber) {
+                    step.classList.remove('step-hidden');
+                    step.classList.add('step-visible');
+                } else {
+                    step.classList.add('step-hidden');
+                    step.classList.remove('step-visible');
+                }
+            });
+        }
+        
+        function resetApp() {
+            pdfUpload.value = '';
+            uploadedFiles = [];
+            fileList.innerHTML = '';
+            hideError();
+            compressBtn.disabled = true;
+            if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+            goToStep(1);
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedQuality = localStorage.getItem('pdfCompressorQuality');
+            if (savedQuality) {
+                slider.value = savedQuality;
+                sliderValue.textContent = savedQuality;
+            }
+            resetApp();
+        });
+
         // --- EVENT LISTENERS ---
-        slider.addEventListener('input', () => { sliderValue.textContent = slider.value; });
-        pdfUpload.addEventListener('change', handlePdfUpload);
+        slider.addEventListener('input', () => { 
+            sliderValue.textContent = slider.value;
+            localStorage.setItem('pdfCompressorQuality', slider.value);
+        });
+        
+        browseBtn.addEventListener('click', () => pdfUpload.click());
+        pdfUpload.addEventListener('change', (e) => handleFiles(e.target.files));
         compressBtn.addEventListener('click', handleCompression);
+        backToUploadBtn.addEventListener('click', resetApp);
+        startOverBtn.addEventListener('click', resetApp);
+
+
+        // Drag and Drop Listeners
+        dragDropArea.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dragDropArea.classList.add('drag-area-highlight'); });
+        dragDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dragDropArea.classList.remove('drag-area-highlight'); });
+        dragDropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragDropArea.classList.remove('drag-area-highlight');
+            handleFiles(e.dataTransfer.files);
+        });
+        
+        modeRadios.forEach(radio => radio.addEventListener('change', (e) => {
+            document.querySelectorAll('.mode-label').forEach(label => {
+                label.classList.remove('bg-indigo-600', 'text-white');
+                label.classList.add('text-gray-300');
+            });
+            e.target.nextElementSibling.classList.add('bg-indigo-600', 'text-white');
+            if (e.target.value === 'image') {
+                qualitySliderContainer.classList.remove('hidden');
+            } else {
+                qualitySliderContainer.classList.add('hidden');
+            }
+        }));
 
         function showError(msg) {
             errorMessage.textContent = msg;
@@ -148,101 +282,126 @@
             statusText.textContent = text;
         }
 
-        function handlePdfUpload(e) {
+        function handleFiles(files) {
             hideError();
-            statusContainer.classList.add('hidden');
-            const file = e.target.files[0];
-            if (!file) {
-                compressBtn.disabled = true;
-                originalPdfFile = null;
+            fileList.innerHTML = '';
+            
+            uploadedFiles = Array.from(files);
+
+            if (uploadedFiles.length === 0) {
+                return;
+            }
+            
+            if (uploadedFiles.some(file => file.type !== 'application/pdf')) {
+                showError('Invalid file(s) selected. Please upload only PDF files.');
+                resetApp();
                 return;
             }
 
-            if (file.type !== 'application/pdf') {
-                showError('Invalid file type. Please upload a PDF.');
-                pdfUpload.value = '';
-                compressBtn.disabled = true;
-                originalPdfFile = null;
-                return;
-            }
-
-            originalPdfFile = file;
+            uploadedFiles.forEach(file => {
+                const listItem = document.createElement('li');
+                listItem.className = 'text-sm bg-slate-700/50 p-2 rounded-md flex items-center justify-between';
+                listItem.innerHTML = `<span>${file.name}</span> <span class="font-mono text-xs text-slate-400">${formatFileSize(file.size)}</span>`;
+                fileList.appendChild(listItem);
+            });
+            
             compressBtn.disabled = false;
+            goToStep(2);
+        }
+        
+        function processPdfFile(file, quality, mode) {
+             return new Promise((resolve, reject) => {
+                const fileReader = new FileReader();
+                fileReader.onload = async (e) => {
+                    try {
+                        const pdfData = new Uint8Array(e.target.result);
+                        const { PDFDocument } = PDFLib;
+
+                        const pdfDocForCopying = await PDFDocument.load(pdfData, { ignoreEncryption: true });
+                        const newPdfDoc = await PDFDocument.create();
+
+                        if (mode === 'image') {
+                            const pdfDocForAnalysis = await pdfjsLib.getDocument({ data: pdfData }).promise;
+                             for (let i = 1; i <= pdfDocForAnalysis.numPages; i++) {
+                                updateStatus(`Compressing ${file.name} (page ${i} of ${pdfDocForAnalysis.numPages})...`);
+                                const page = await pdfDocForAnalysis.getPage(i);
+                                const viewport = page.getViewport({ scale: 2.0 });
+                                const canvas = document.createElement('canvas');
+                                canvas.height = viewport.height;
+                                canvas.width = viewport.width;
+                                const context = canvas.getContext('2d');
+                                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                                
+                                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                                const compressedImageData = jpegCompress(imageData, quality);
+                                
+                                const tempCanvas = document.createElement('canvas');
+                                tempCanvas.width = compressedImageData.width;
+                                tempCanvas.height = compressedImageData.height;
+                                tempCanvas.getContext('2d').putImageData(compressedImageData, 0, 0);
+
+                                const jpegImageBytes = await fetch(tempCanvas.toDataURL('image/jpeg', quality / 100)).then(res => res.arrayBuffer());
+                                const jpegImage = await newPdfDoc.embedJpg(jpegImageBytes);
+
+                                const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
+                                newPage.drawImage(jpegImage, { x: 0, y: 0, width: newPage.getWidth(), height: newPage.getHeight() });
+                            }
+                        } else {
+                            updateStatus(`Copying pages from ${file.name}...`);
+                            const pageIndices = Array.from({ length: pdfDocForCopying.getPageCount() }, (_, i) => i);
+                            const copiedPages = await newPdfDoc.copyPages(pdfDocForCopying, pageIndices);
+                            copiedPages.forEach(page => newPdfDoc.addPage(page));
+                        }
+                        
+                        const newPdfBytes = await newPdfDoc.save();
+                        resolve(new Blob([newPdfBytes], { type: 'application/pdf' }));
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                fileReader.onerror = reject;
+                fileReader.readAsArrayBuffer(file);
+            });
         }
 
         async function handleCompression() {
-            if (!originalPdfFile) {
+            if (uploadedFiles.length === 0) {
                 showError('Please upload a PDF file first.');
                 return;
             }
             hideError();
             
-            // Show loader and reset UI
-            statusContainer.classList.remove('hidden');
+            goToStep(3);
             loaderSection.classList.remove('hidden');
             summarySection.classList.add('hidden');
             compressBtn.disabled = true;
             if(currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-
+            
+            const quality = parseInt(slider.value, 10);
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const totalOriginalSize = uploadedFiles.reduce((sum, file) => sum + file.size, 0);
 
             try {
-                const quality = parseInt(slider.value, 10);
-                const fileReader = new FileReader();
+                if (uploadedFiles.length > 1) {
+                    const zip = new JSZip();
+                    let totalCompressedSize = 0;
 
-                fileReader.onload = async (e) => {
-                    const pdfData = new Uint8Array(e.target.result);
-                    
-                    updateStatus('Loading PDF...');
-                    const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
-                    const numPages = pdfDoc.numPages;
-
-                    const { PDFDocument } = PDFLib;
-                    const newPdfDoc = await PDFDocument.create();
-
-                    for (let i = 1; i <= numPages; i++) {
-                        updateStatus(`Processing page ${i} of ${numPages}...`);
-                        const page = await pdfDoc.getPage(i);
-                        const viewport = page.getViewport({ scale: 1.5 }); // Use a good scale for quality
-
-                        const canvas = document.createElement('canvas');
-                        const context = canvas.getContext('2d');
-                        canvas.height = viewport.height;
-                        canvas.width = viewport.width;
-
-                        await page.render({ canvasContext: context, viewport: viewport }).promise;
-                        
-                        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                        
-                        // Use our existing JPEG logic to compress the page image
-                        const compressedImageData = jpegCompress(imageData, quality);
-                        
-                        // Put compressed data back on a canvas to get a data URL
-                        const tempCanvas = document.createElement('canvas');
-                        tempCanvas.width = compressedImageData.width;
-                        tempCanvas.height = compressedImageData.height;
-                        tempCanvas.getContext('2d').putImageData(compressedImageData, 0, 0);
-
-                        const jpegImageBytes = await fetch(tempCanvas.toDataURL('image/jpeg', quality / 100)).then(res => res.arrayBuffer());
-                        const jpegImage = await newPdfDoc.embedJpg(jpegImageBytes);
-
-                        const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
-                        newPage.drawImage(jpegImage, {
-                            x: 0,
-                            y: 0,
-                            width: newPage.getWidth(),
-                            height: newPage.getHeight(),
-                        });
+                    for (const file of uploadedFiles) {
+                        const compressedBlob = await processPdfFile(file, quality, mode);
+                        totalCompressedSize += compressedBlob.size;
+                        const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+                        zip.file(`${originalName}_compressed.pdf`, compressedBlob);
                     }
-
-                    updateStatus('Finalizing PDF...');
-                    const newPdfBytes = await newPdfDoc.save();
-                    const pdfBlob = new Blob([newPdfBytes], { type: 'application/pdf' });
                     
-                    displayResults(originalPdfFile.size, pdfBlob);
-                };
+                    updateStatus('Zipping files...');
+                    const zipBlob = await zip.generateAsync({ type: "blob" });
+                    displayResults(totalOriginalSize, zipBlob, true);
 
-                fileReader.readAsArrayBuffer(originalPdfFile);
-
+                } else {
+                    const file = uploadedFiles[0];
+                    const compressedBlob = await processPdfFile(file, quality, mode);
+                    displayResults(file.size, compressedBlob, false);
+                }
             } catch (error) {
                 console.error("Compression failed:", error);
                 showError(`An error occurred: ${error.message}`);
@@ -252,7 +411,7 @@
             }
         }
         
-        function displayResults(originalSize, compressedBlob) {
+        function displayResults(originalSize, compressedBlob, isBatch) {
              loaderSection.classList.add('hidden');
              summarySection.classList.remove('hidden');
              
@@ -265,6 +424,15 @@
              
              currentObjectUrl = URL.createObjectURL(compressedBlob);
              downloadBtn.href = currentObjectUrl;
+
+             if (isBatch) {
+                downloadBtn.querySelector('span').textContent = 'Download All (.zip)';
+                downloadBtn.download = 'compressed_pdfs.zip';
+             } else {
+                downloadBtn.querySelector('span').textContent = 'Download PDF';
+                const originalName = uploadedFiles[0].name.substring(0, uploadedFiles[0].name.lastIndexOf('.'));
+                downloadBtn.download = `${originalName}_compressed.pdf`;
+             }
         }
 
         function formatFileSize(bytes) {
@@ -275,6 +443,7 @@
             return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
         }
         
+        // --- JPEG COMPRESSION LOGIC ---
         const LUMINANCE_QUANTIZATION_TABLE = [16,11,10,16,24,40,51,61,12,12,14,19,26,58,60,55,14,13,16,24,40,57,69,56,14,17,22,29,51,87,80,62,18,22,37,56,68,109,103,77,24,35,55,64,81,104,113,92,49,64,78,87,103,121,120,101,72,92,95,98,112,100,103,99];
         const CHROMINANCE_QUANTIZATION_TABLE = [17,18,24,47,99,99,99,99,18,21,26,66,99,99,99,99,24,26,56,99,99,99,99,99,47,66,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99];
         const DCT_BASIS = new Array(8).fill(0).map(()=>new Array(8).fill(0));
