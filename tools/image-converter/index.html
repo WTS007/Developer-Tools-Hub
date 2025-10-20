@@ -6,6 +6,7 @@
     <title>Universal Image Converter</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -23,6 +24,7 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        /* Custom slider styles for dark theme */
         input[type=range]::-webkit-slider-runnable-track {
             background: #374151; /* dark-gray-700 */
         }
@@ -62,8 +64,8 @@
             <div class="bg-slate-800 rounded-lg shadow-2xl p-6 mb-8 border border-slate-700">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
                     <div class="flex flex-col">
-                        <label for="image-upload" class="mb-2 font-semibold text-gray-300">1. Upload Image</label>
-                        <input type="file" id="image-upload" accept="image/png, image/jpeg" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-blue-300 hover:file:bg-slate-600 cursor-pointer">
+                        <label for="image-upload" class="mb-2 font-semibold text-gray-300">1. Upload Image(s)</label>
+                        <input type="file" id="image-upload" accept="image/png, image/jpeg" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-blue-300 hover:file:bg-slate-600 cursor-pointer" multiple>
                     </div>
                      <div class="flex flex-col">
                         <label for="format-toggle" class="mb-2 font-semibold text-gray-300 text-center">2. Output Format</label>
@@ -83,6 +85,12 @@
                     </div>
                 </div>
                 <p id="error-message" class="text-red-400 text-center mt-4 hidden"></p>
+            </div>
+            
+            <!-- File List for Batch Processing -->
+            <div id="file-list-container" class="hidden bg-slate-800 rounded-lg shadow-2xl p-6 mb-8 border border-slate-700">
+                <h3 class="font-semibold text-white mb-2">Files to Process:</h3>
+                <ul id="file-list" class="list-disc list-inside text-gray-400 max-h-40 overflow-y-auto"></ul>
             </div>
 
             <!-- Loading Indicator -->
@@ -130,14 +138,29 @@
         const downloadBtn = document.getElementById('download-btn');
         const formatJpegBtn = document.getElementById('format-jpeg');
         const formatPdfBtn = document.getElementById('format-pdf');
+        const fileListContainer = document.getElementById('file-list-container');
+        const fileList = document.getElementById('file-list');
+        const loaderText = document.getElementById('loader-text');
         
-        let originalImageData = null;
-        let originalFileSize = 0;
+        let uploadedFiles = [];
+        let originalTotalSize = 0;
         let currentObjectUrl = null;
-        let outputFormat = 'jpeg'; 
+        let outputFormat = 'jpeg'; // 'jpeg' or 'pdf'
+        
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedQuality = localStorage.getItem('imageConverterQuality');
+            if (savedQuality) {
+                slider.value = savedQuality;
+                sliderValue.textContent = savedQuality;
+            }
+        });
         
         // --- EVENT LISTENERS ---
-        slider.addEventListener('input', () => { sliderValue.textContent = slider.value; });
+        slider.addEventListener('input', () => { 
+            sliderValue.textContent = slider.value;
+            localStorage.setItem('imageConverterQuality', slider.value);
+        });
         imageUpload.addEventListener('change', handleImageUpload);
         actionBtn.addEventListener('click', handleAction);
         formatJpegBtn.addEventListener('click', () => setOutputFormat('jpeg'));
@@ -150,7 +173,7 @@
                 formatJpegBtn.classList.remove('text-gray-300');
                 formatPdfBtn.classList.remove('bg-blue-600', 'text-white');
                 formatPdfBtn.classList.add('text-gray-300');
-                actionBtn.textContent = 'Compress to JPEG';
+                actionBtn.textContent = uploadedFiles.length > 1 ? `Compress ${uploadedFiles.length} Files to JPEG` : 'Compress to JPEG';
                 downloadBtn.textContent = 'Download JPEG';
                 downloadBtn.download = 'compressed.jpg';
             } else { // pdf
@@ -158,7 +181,7 @@
                 formatPdfBtn.classList.remove('text-gray-300');
                 formatJpegBtn.classList.remove('bg-blue-600', 'text-white');
                 formatJpegBtn.classList.add('text-gray-300');
-                actionBtn.textContent = 'Create PDF';
+                actionBtn.textContent = uploadedFiles.length > 1 ? `Create ${uploadedFiles.length} PDFs` : 'Create PDF';
                 downloadBtn.textContent = 'Download PDF';
                 downloadBtn.download = 'converted.pdf';
             }
@@ -175,102 +198,182 @@
 
         function handleImageUpload(e) {
             hideError();
-            const file = e.target.files[0];
-            if (!file) {
+            uploadedFiles = Array.from(e.target.files);
+            if (uploadedFiles.length === 0) {
                 actionBtn.disabled = true;
                 return;
             };
 
+            originalTotalSize = 0;
+            fileList.innerHTML = '';
+            let invalidFiles = false;
+
             const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
-            if (!allowedTypes.includes(file.type)) {
-                showError(`Invalid file type: "${file.type || 'unknown'}". Please upload a PNG or JPEG.`);
+            uploadedFiles.forEach(file => {
+                if (!allowedTypes.includes(file.type)) {
+                    invalidFiles = true;
+                }
+                originalTotalSize += file.size;
+                const listItem = document.createElement('li');
+                listItem.textContent = `${file.name} (${formatFileSize(file.size)})`;
+                fileList.appendChild(listItem);
+            });
+
+            if (invalidFiles) {
+                showError(`Invalid file type detected. Please upload only PNG or JPEG images.`);
                 imageUpload.value = '';
                 actionBtn.disabled = true;
                 resultsDiv.classList.add('hidden');
                 summaryDiv.classList.add('hidden');
-                originalImageData = null;
+                fileListContainer.classList.add('hidden');
+                uploadedFiles = [];
                 return;
             }
+            
+            actionBtn.disabled = false;
+            summaryDiv.classList.add('hidden');
 
-            if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-            originalFileSize = file.size;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    const ctx = originalCanvas.getContext('2d');
-                    originalCanvas.width = img.width;
-                    originalCanvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-                    originalImageData = ctx.getImageData(0, 0, img.width, img.height);
-                    actionBtn.disabled = false;
-                    resultsDiv.classList.remove('hidden');
-                    resultsDiv.classList.add('grid');
-                    summaryDiv.classList.add('hidden');
-                    compressedCanvas.getContext('2d').clearRect(0,0,compressedCanvas.width,compressedCanvas.height);
-                    compressedSizeText.textContent = '';
-                    originalSizeText.textContent = `Size: ${formatFileSize(originalFileSize)}`;
+            if (uploadedFiles.length > 1) {
+                resultsDiv.classList.add('hidden');
+                fileListContainer.classList.remove('hidden');
+                setOutputFormat(outputFormat); // Update button text for batch
+            } else {
+                fileListContainer.classList.add('hidden');
+                resultsDiv.classList.remove('hidden');
+                resultsDiv.classList.add('grid');
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const ctx = originalCanvas.getContext('2d');
+                        originalCanvas.width = img.width;
+                        originalCanvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+                        compressedCanvas.getContext('2d').clearRect(0,0,compressedCanvas.width,compressedCanvas.height);
+                        compressedSizeText.textContent = '';
+                        originalSizeText.textContent = `Size: ${formatFileSize(uploadedFiles[0].size)}`;
+                    };
+                    img.src = event.target.result;
                 };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
+                reader.readAsDataURL(uploadedFiles[0]);
+            }
         }
 
-        function handleAction() {
-            if (!originalImageData) {
+        async function handleAction() {
+            if (uploadedFiles.length === 0) {
                 showError('Please upload an image first.');
                 return;
             }
             hideError();
             loaderContainer.classList.remove('hidden');
+            loaderText.textContent = 'Processing...';
             actionBtn.disabled = true;
             resultsDiv.classList.add('hidden');
             summaryDiv.classList.add('hidden');
 
-            setTimeout(() => {
-                try {
-                    const value = parseInt(slider.value, 10);
-                    
-                    const compressedData = jpegCompress(originalImageData, value);
-                    const ctx = compressedCanvas.getContext('2d');
-                    compressedCanvas.width = compressedData.width;
-                    compressedCanvas.height = compressedData.height;
-                    ctx.putImageData(compressedData, 0, 0);
-                    const imageDataUrl = compressedCanvas.toDataURL('image/jpeg', value / 100);
-
-                    if (outputFormat === 'jpeg') {
-                        const blob = dataURLtoBlob(imageDataUrl);
-                        updateResults(blob.size, URL.createObjectURL(blob), true);
-                    } else { // pdf
-                        const { jsPDF } = window.jspdf;
-                        const imgWidth = originalImageData.width;
-                        const imgHeight = originalImageData.height;
-                        
-                        if (!imageDataUrl || imageDataUrl === 'data:,') {
-                            throw new Error('Failed to generate image data from canvas.');
-                        }
-
-                        const orientation = imgWidth > imgHeight ? 'l' : 'p';
-                        const doc = new jsPDF(orientation, 'px', [imgWidth, imgHeight]);
-                        const pdfWidth = doc.internal.pageSize.getWidth();
-                        const pdfHeight = doc.internal.pageSize.getHeight();
-
-                        doc.addImage(imageDataUrl, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-                        const pdfBlob = doc.output('blob');
-                        updateResults(pdfBlob.size, URL.createObjectURL(pdfBlob), true);
-                    }
-
-                    resultsDiv.classList.remove('hidden');
-                    summaryDiv.classList.remove('hidden');
-
-                } catch (error) {
-                    console.error("Action Failed:", error);
-                    showError(`An error occurred: ${error.message}. Please try again.`);
-                } finally {
-                    loaderContainer.classList.add('hidden');
-                    actionBtn.disabled = false;
+            try {
+                if (uploadedFiles.length > 1) {
+                    await handleBatchProcessing();
+                } else {
+                    await handleSingleFileProcessing();
                 }
-            }, 50);
+            } catch (error) {
+                console.error("Action Failed:", error);
+                showError(`An error occurred: ${error.message}. Please try again.`);
+            } finally {
+                loaderContainer.classList.add('hidden');
+                actionBtn.disabled = false;
+            }
+        }
+
+        function fileToImageData(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+                        resolve(ctx.getImageData(0, 0, img.width, img.height));
+                    };
+                    img.onerror = reject;
+                    img.src = event.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function handleSingleFileProcessing() {
+            const originalImageData = await fileToImageData(uploadedFiles[0]);
+            const value = parseInt(slider.value, 10);
+            
+            const compressedData = jpegCompress(originalImageData, value);
+            const ctx = compressedCanvas.getContext('2d');
+            compressedCanvas.width = compressedData.width;
+            compressedCanvas.height = compressedData.height;
+            ctx.putImageData(compressedData, 0, 0);
+            const imageDataUrl = compressedCanvas.toDataURL('image/jpeg', value / 100);
+
+            if (outputFormat === 'jpeg') {
+                const blob = dataURLtoBlob(imageDataUrl);
+                updateResults(uploadedFiles[0].size, blob.size, URL.createObjectURL(blob));
+            } else { // pdf
+                const { jsPDF } = window.jspdf;
+                const orientation = originalImageData.width > originalImageData.height ? 'l' : 'p';
+                const doc = new jsPDF(orientation, 'px', [originalImageData.width, originalImageData.height]);
+                doc.addImage(imageDataUrl, 'JPEG', 0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight());
+                const pdfBlob = doc.output('blob');
+                updateResults(uploadedFiles[0].size, pdfBlob.size, URL.createObjectURL(pdfBlob));
+            }
+            resultsDiv.classList.remove('hidden');
+            summaryDiv.classList.remove('hidden');
+        }
+
+        async function handleBatchProcessing() {
+            const zip = new JSZip();
+            const quality = parseInt(slider.value, 10);
+            let processedBlobs = [];
+
+            for (let i = 0; i < uploadedFiles.length; i++) {
+                const file = uploadedFiles[i];
+                loaderText.textContent = `Processing ${i + 1} of ${uploadedFiles.length}: ${file.name}`;
+                const originalImageData = await fileToImageData(file);
+                
+                const compressedData = jpegCompress(originalImageData, quality);
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = compressedData.width;
+                tempCanvas.height = compressedData.height;
+                tempCanvas.getContext('2d').putImageData(compressedData, 0, 0);
+                const imageDataUrl = tempCanvas.toDataURL('image/jpeg', quality / 100);
+
+                const fileName = file.name.substring(0, file.name.lastIndexOf('.'));
+
+                if (outputFormat === 'jpeg') {
+                    const blob = dataURLtoBlob(imageDataUrl);
+                    processedBlobs.push(blob);
+                    zip.file(`${fileName}.jpg`, blob);
+                } else { //pdf
+                    const { jsPDF } = window.jspdf;
+                    const orientation = originalImageData.width > originalImageData.height ? 'l' : 'p';
+                    const doc = new jsPDF(orientation, 'px', [originalImageData.width, originalImageData.height]);
+                    doc.addImage(imageDataUrl, 'JPEG', 0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight());
+                    const pdfBlob = doc.output('blob');
+                    processedBlobs.push(pdfBlob);
+                    zip.file(`${fileName}.pdf`, pdfBlob);
+                }
+            }
+
+            loaderText.textContent = 'Zipping files...';
+            const zipBlob = await zip.generateAsync({ type: "blob" });
+            const totalCompressedSize = processedBlobs.reduce((sum, blob) => sum + blob.size, 0);
+            
+            downloadBtn.download = `compressed_files.zip`;
+            updateResults(originalTotalSize, totalCompressedSize, URL.createObjectURL(zipBlob));
+            summaryDiv.classList.remove('hidden');
         }
         
         // --- JPEG COMPRESSION LOGIC ---
@@ -292,12 +395,18 @@
         function placeBlock(finalRgb,yBlock,cbBlock,crBlock,startX,startY,width){for(let y=0;y<8;y++){for(let x=0;x<8;x++){const blockIndex=y*8+x,Y=yBlock[blockIndex],Cb=cbBlock[blockIndex],Cr=crBlock[blockIndex],r=Y+1.402*(Cr-128),g=Y-.344136*(Cb-128)-.714136*(Cr-128),b=Y+1.772*(Cb-128),finalIndex=((startY+y)*width+(startX+x))*4;finalRgb[finalIndex]=r;finalRgb[finalIndex+1]=g;finalRgb[finalIndex+2]=b;finalRgb[finalIndex+3]=255;}}}
         
         // --- GENERAL HELPER FUNCTIONS ---
-        function updateResults(compressedSize, url, isBlobUrl = false) {
-            compressedSizeText.textContent = `Size: ${formatFileSize(compressedSize)}`;
-            const ratio = (1 - compressedSize / originalFileSize) * 100;
-            compressionRatioText.textContent = `Size Reduction: ${ratio > 0 ? ratio.toFixed(2) : 0}%`;
+        function updateResults(originalSize, compressedSize, url) {
+            if(uploadedFiles.length > 1) {
+                compressionRatioText.textContent = `Processed ${uploadedFiles.length} files. Total size reduced from ${formatFileSize(originalSize)} to ${formatFileSize(compressedSize)}.`;
+                downloadBtn.textContent = `Download All (.zip)`;
+                downloadBtn.download = 'compressed_files.zip';
+            } else {
+                compressedSizeText.textContent = `Size: ${formatFileSize(compressedSize)}`;
+                const ratio = (1 - compressedSize / originalSize) * 100;
+                compressionRatioText.textContent = `Size Reduction: ${ratio > 0 ? ratio.toFixed(2) : 0}%`;
+            }
             if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-            currentObjectUrl = url;
+            currentObjectUrl = url; // Already a blob url
             downloadBtn.href = currentObjectUrl;
         }
         function formatFileSize(bytes){if(bytes===0)return'0 Bytes';const k=1024,sizes=['Bytes','KB','MB','GB'],i=Math.floor(Math.log(bytes)/Math.log(k));return parseFloat((bytes/Math.pow(k,i)).toFixed(2))+' '+sizes[i];}
